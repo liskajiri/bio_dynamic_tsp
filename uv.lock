@@ -146,6 +146,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -237,6 +246,7 @@ dependencies = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "osmnx" },
+    { name = "pygad" },
 ]
 
 [package.metadata]
@@ -246,6 +256,7 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.6.1" },
     { name = "numpy", specifier = ">=2.4.6" },
     { name = "osmnx", specifier = ">=2.1.0" },
+    { name = "pygad", specifier = ">=3.6.0" },
 ]
 
 [[package]]
@@ -813,6 +824,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062bea51aa7b87d45576f649f16458d78b7cf94b9ab2e6/pycparser-3.0.tar.gz", hash = "sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29", size = 103492, upload-time = "2026-01-21T14:26:51.89Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl", hash = "sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992", size = 48172, upload-time = "2026-01-21T14:26:50.693Z" },
+]
+
+[[package]]
+name = "pygad"
+version = "3.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cloudpickle" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e1/44/dd31c1157f930e7d7195bc67addb6ff2ae2f8abad07243b7c02faf97294b/pygad-3.6.0.tar.gz", hash = "sha256:9b36d9deeb779f124f39a975d19a02a60c8967d4105a67cc3ec5b3a99ac86e35", size = 116803, upload-time = "2026-04-08T19:33:56.065Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/0e/1b7c85aa884b99421e5f77b87484cedfaf0373a88bc69dbe8f771ebf1612/pygad-3.6.0-py3-none-any.whl", hash = "sha256:7ed198254a22c9a9680de3fdbf945e12d1083a06903bf93be7c014f67549cdc0", size = 91821, upload-time = "2026-04-08T19:33:54.943Z" },
 ]
 
 [[package]]

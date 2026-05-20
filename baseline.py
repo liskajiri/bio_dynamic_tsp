@@ -7,7 +7,9 @@ import numpy as np
 import osmnx as ox
 
 from data import DynamicRoadTSP, ExperimentConfig, setup_experiment
-from utils import tour_to_route_nodes
+from utils import append_run_result, tour_to_route_nodes
+
+n_iterations = 200
 
 
 @dataclass
@@ -38,7 +40,7 @@ def nearest_neighbor_tour(
 
 def run_nearest_neighbor_baseline(
     env: DynamicRoadTSP,
-    iterations: int,
+    iterations: int = n_iterations,
     recompute_on_update: bool = True,
 ) -> BaselineResult:
     current_tour = nearest_neighbor_tour(
@@ -67,12 +69,17 @@ def run_nearest_neighbor_baseline(
 
 
 def main() -> None:
-    config = ExperimentConfig(node_count=-1)
+    config = ExperimentConfig(node_count=100)
     data, G, env = setup_experiment(config)
 
-    n_iterations = 200
     result = run_nearest_neighbor_baseline(env, iterations=n_iterations)
     print(f"Baseline best cost: {result.best_cost:.2f} seconds")
+
+    append_run_result(
+        result,
+        run_name="pygad",
+        config=config,
+    )
 
     osm_nodes = tour_to_route_nodes(
         G, data.node_ids, data.start_index, result.best_tour
