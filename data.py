@@ -12,8 +12,8 @@ import osmnx as ox
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    place: str = "Centro, Madrid, Spain"
-    # place: str = "Madrid, Spain"
+    # place: str = "Centro, Madrid, Spain"
+    place: str = "Madrid, Spain"
     cache_dir: Path = Path("cache")
     node_count: int = -1
     sample_seed: int = 42
@@ -87,7 +87,7 @@ def sample_nodes(G: nx.MultiDiGraph, node_count: int, seed: int) -> List[int]:
 
 def build_time_matrix(G: nx.MultiDiGraph, nodes: List[int]) -> np.ndarray:
     n = len(nodes)
-    matrix = np.zeros((n, n), dtype=np.float16)
+    matrix = np.zeros((n, n), dtype=np.float32)
     for i, source in enumerate(nodes):
         lengths = nx.single_source_dijkstra_path_length(G, source, weight="travel_time")
         for j, target in enumerate(nodes):
