@@ -6,20 +6,22 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import networkx as nx
+import numba as nb
 import numpy as np
 import osmnx as ox
 
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    # place: str = "Centro, Madrid, Spain"
-    place: str = "Madrid, Spain"
+    place: str = "Centro, Madrid, Spain"
+    # place: str = "Madrid, Spain"
     cache_dir: Path = Path("cache")
-    node_count: int = -1
+    node_count: int = 100
     sample_seed: int = 42
     start_index: int = 0
-    update_interval: int = 100
-    noise_range: Tuple[float, float] = (0.9, 1.1)
+    update_interval: int = 200
+    # noise_range: Tuple[float, float] = (0.9, 1.1)
+    noise_range: Tuple[float, float] = (1.0, 1.0)
     drop_fraction: float = 0.05
     dynamics_seed: int = 123
     use_cache: bool = True
@@ -58,8 +60,8 @@ def build_drive_graph(
             G = ox.add_edge_travel_times(G)
 
         G = ox.truncate.largest_component(G, strongly=True)
-        # G = ox.project_graph(G)
-        # G = ox.consolidate_intersections(G, tolerance=10, rebuild_graph=True)
+        G = ox.project_graph(G)
+        G = ox.consolidate_intersections(G, tolerance=10, rebuild_graph=True)
         return G
 
     G = ox.graph_from_place(place, network_type="drive")
@@ -174,21 +176,14 @@ class DynamicRoadTSP:
         mask[self.data.start_index] = False
         return np.flatnonzero(mask).tolist()
 
-    def filter_tour(self, tour: List[int]) -> List[int]:
-        return [
-            i for i in tour if i != self.data.start_index and self.available_mask[i]
-        ]
-
     def route_cost(self, tour: List[int], return_to_start: bool = True) -> float:
-        filtered = self.filter_tour(tour)
-        if not filtered:
-            return 0.0
-        total = self.current_matrix[self.data.start_index][filtered[0]]
-        for a, b in zip(filtered, filtered[1:]):
-            total += self.current_matrix[a][b]
-        if return_to_start:
-            total += self.current_matrix[filtered[-1]][self.data.start_index]
-        return total
+        return route_cost_numba(
+            np.array(tour, dtype=int),
+            self.current_matrix,
+            self.available_mask,
+            self.data.start_index,
+            return_to_start,
+        )
 
     def state(self, iteration: int) -> ExperimentState:
         self.update(iteration)
@@ -205,3 +200,31 @@ def setup_experiment(
     data, G = make_experiment_data(config)
     env = DynamicRoadTSP(data, config)
     return data, G, env
+
+
+@nb.njit(cache=True, fastmath=True)
+def route_cost_numba(
+    tour: np.ndarray,
+    matrix: np.ndarray,
+    available: np.ndarray,
+    start: int,
+    return_to_start: bool = True,
+) -> float:
+    total = 0.0
+    prev = start
+    found = False
+
+    for i in range(tour.shape[0]):
+        node = tour[i]
+
+        if node == start or not available[node]:
+            continue
+
+        total += matrix[prev, node]
+        prev = node
+        found = True
+
+    if found and return_to_start:
+        total += matrix[prev, start]
+
+    return total

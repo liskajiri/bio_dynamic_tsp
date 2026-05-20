@@ -5,9 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "loguru>=0.7.3",
     "marimo>=0.23.6",
     "matplotlib>=3.10.9",
     "networkx>=3.6.1",
+    "numba>=0.65.1",
     "numpy>=2.4.6",
     "osmnx>=2.1.0",
     "pygad>=3.6.0",

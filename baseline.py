@@ -69,7 +69,7 @@ def run_nearest_neighbor_baseline(
 
 
 def main() -> None:
-    config = ExperimentConfig(node_count=100)
+    config = ExperimentConfig()
     data, G, env = setup_experiment(config)
 
     result = run_nearest_neighbor_baseline(env, iterations=n_iterations)
