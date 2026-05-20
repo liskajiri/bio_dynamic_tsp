@@ -6,7 +6,7 @@ from typing import List
 import numpy as np
 import osmnx as ox
 
-from data_description import DynamicRoadTSP, ExperimentConfig, setup_experiment
+from data import DynamicRoadTSP, ExperimentConfig, setup_experiment
 from utils import tour_to_route_nodes
 
 
