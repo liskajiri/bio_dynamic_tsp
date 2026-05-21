@@ -15,19 +15,19 @@ from utils import tour_to_route_nodes
 
 @dataclass
 class PygadConfig:
-    population_size: int = 120
-    iterations: int = 200
-    num_parents_mating: int = 60
-    tournament_size: int = 3
-    crossover_prob: float = 0.9
-    mutation_prob: float = 0.2
+    population_size: int = 200
+    iterations: int = 1000
+    num_parents_mating: int = 100
+    tournament_size: int = 4
+    crossover_prob: float = 0.95
+    mutation_prob: float = 0.15
     mutation_type: str = "inversion"
-    keep_elitism: int = 2
+    keep_elitism: int = 5
     seed: int = 2024
-    use_greedy_seed: bool = False
+    use_greedy_seed: bool = True
     use_order_crossover: bool = True
     use_local_search: bool = True
-    local_search_max_swaps: Optional[int] = 2000
+    local_search_max_swaps: Optional[int] = 500
     crossover_type: str = "single_point"
 
 
@@ -41,6 +41,7 @@ class GAResult:
 def nearest_neighbor_tour(
     matrix: np.ndarray, start_idx: int, available_mask: np.ndarray
 ) -> List[int]:
+    """Generates a greedy tour using open nodes."""
     unvisited = np.flatnonzero(available_mask).tolist()
     if start_idx in unvisited:
         unvisited.remove(start_idx)
@@ -63,12 +64,26 @@ def build_initial_population(
     rng: np.random.Generator,
     seed_tour: Optional[Sequence[int]] = None,
 ) -> np.ndarray:
+    """
+    Builds population by mixing the greedy seed, structural variations
+    of the greedy seed (to prevent elite domination stalling), and random tours.
+    """
     population: List[List[int]] = []
-    if seed_tour is not None and len(seed_tour) == len(gene_space):
-        population.append([int(g) for g in seed_tour])
-        if len(population) < population_size:
-            population.append(list(reversed(population[0])))
 
+    if seed_tour is not None and len(seed_tour) == len(gene_space):
+        base_seed = [int(g) for g in seed_tour]
+        population.append(base_seed)
+
+        # Fill half the population with 2-opt style mutations of your seed
+        # This gives GA high-quality building blocks to combine during crossover
+        while len(population) < population_size // 2:
+            mutant = list(base_seed)
+            if len(mutant) > 2:
+                i, j = sorted(rng.choice(len(mutant), size=2, replace=False))
+                mutant[i : j + 1] = reversed(mutant[i : j + 1])
+            population.append(mutant)
+
+    # Fill the rest with uniform random permutations for global exploration
     while len(population) < population_size:
         population.append(rng.permutation(gene_space).tolist())
 
@@ -107,41 +122,80 @@ def order_crossover(parents, offspring_size, ga_instance):
     return offspring
 
 
-def two_opt_permutation(env, tour, max_swaps=200):
+def edge_recombination_crossover(parents, offspring_size, ga_instance):
+    offspring = np.empty(offspring_size, dtype=parents.dtype)
+    num_genes = offspring_size[1]
+
+    for k in range(offspring_size[0]):
+        parent1 = parents[k % parents.shape[0]]
+        parent2 = parents[(k + 1) % parents.shape[0]]
+
+        # 1. Build Adjacency List for all edges in both parents
+        adj = {i: set() for i in parent1}
+        for p in (parent1, parent2):
+            for i in range(num_genes):
+                # Add neighbors (handling wrap-around safely)
+                adj[p[i]].add(p[(i - 1) % num_genes])
+                adj[p[i]].add(p[(i + 1) % num_genes])
+
+        # 2. Build the Child Route
+        child = []
+        # Start with a random choice between the two parents' first nodes
+        current = np.random.choice([parent1[0], parent2[0]])
+
+        while len(child) < num_genes:
+            child.append(current)
+
+            # Remove current node from all remaining adjacency lists
+            for neighbors in adj.values():
+                neighbors.discard(current)
+
+            neighbors = adj[current]
+
+            if neighbors:
+                # Choose the neighbor with the fewest remaining links (isolate mitigation)
+                min_len = min(len(adj[n]) for n in neighbors)
+                candidates = [n for n in neighbors if len(adj[n]) == min_len]
+                current = np.random.choice(candidates)
+            else:
+                # If we hit a dead end, pick a random unvisited node
+                remaining = [n for n in parent1 if n not in child]
+                if remaining:
+                    current = np.random.choice(remaining)
+
+        offspring[k, :] = child
+
+    return offspring
+
+
+def two_opt_permutation(env: DynamicRoadTSP, tour: List[int], max_swaps: int = 300):
+    """
+    Asymmetric-safe 2-opt. Re-calculates full cost to properly handle
+    one-ways streets and depot connections. Includes index -1 to allow
+    realigning the first edge coming out of the depot.
+    """
     best = tour[:]
     best_cost = env.route_cost(best)
     swaps = 0
     improved = True
+    n = len(best)
 
     while improved:
         improved = False
-        n = len(best)
-        for i in range(n - 1):
+        for i in range(-1, n - 1):
             for k in range(i + 2, n):
                 if max_swaps is not None and swaps >= max_swaps:
                     return best, best_cost
-                swaps += 1
 
-                # Calculate cost delta for reversing best[i+1:k+1]
-                # Only 4 edges are affected:
-                # Remove: best[i]->best[i+1] and best[k]->best[k+1]
-                # Add:    best[i]->best[k] and best[i+1]->best[k+1]
-                a = best[i]
-                b = best[i + 1]
-                c = best[k]
-                d = best[(k + 1) % n]
+                new_tour = best[: i + 1] + best[i + 1 : k + 1][::-1] + best[k + 1 :]
+                new_cost = env.route_cost(new_tour)
 
-                old_cost = env.current_matrix[a, b] + env.current_matrix[c, d]
-                new_cost = env.current_matrix[a, c] + env.current_matrix[b, d]
-                delta = new_cost - old_cost
-
-                # Accept improvement (with numerical tolerance)
-                if delta < -1e-9:
-                    best[i + 1 : k + 1] = reversed(best[i + 1 : k + 1])
-                    best_cost += delta
+                if new_cost < best_cost - 1e-4:
+                    best = new_tour
+                    best_cost = new_cost
+                    swaps += 1
                     improved = True
                     break
-
             if improved:
                 break
 
@@ -149,46 +203,57 @@ def two_opt_permutation(env, tour, max_swaps=200):
 
 
 def run_ga_pygad(env: DynamicRoadTSP, config: PygadConfig) -> GAResult:
-    # gene_space = [i for i in range(env.n) if i != env.data.start_index]
     gene_space = env.available_indices()
     num_genes = len(gene_space)
     history: List[float] = []
     rng = np.random.default_rng(config.seed)
 
-    def _to_int_tour(solution: Sequence[int]) -> List[int]:
-        return [int(g) for g in solution]
-
     def fitness_func(ga_instance: pygad.GA, solution: Sequence[int], solution_idx: int):
-        cost = env.route_cost(list(solution))
+        tour = [int(g) for g in solution]
+        cost = env.route_cost(tour)
+
+        # Add a massive penalty if the GA omits genes or provides illegal spaces
+        if len(set(tour)) != num_genes:
+            return -1e10
+
         return -float(cost)
 
     def on_generation(ga_instance: pygad.GA):
-        iteration = ga_instance.generations_completed + 1
+        iteration = ga_instance.generations_completed
+
+        env.update(iteration)
 
         best_solution, best_fitness, _ = ga_instance.best_solution()
-        cost = env.route_cost(best_solution)
+        cost = env.route_cost([int(g) for g in best_solution])
         history.append(cost)
 
-        # Adaptive local search interval
-        if iteration < 100:
-            local_search_interval = 20  # Early: aggressive
-        elif iteration < 300:
-            local_search_interval = 50  # Mid: moderate
+        # Adaptive Local Search Settings
+        if iteration < 150:
+            local_search_interval = 10
+        elif iteration < 500:
+            local_search_interval = 25
         else:
-            local_search_interval = 100  # Late: sparse
-        local_search_top_k = 5
+            local_search_interval = 50
+
+        local_search_top_k = 4
 
         if iteration % local_search_interval == 0:
-            fitness = ga_instance.last_generation_fitness
+            fitness = ga_instance.last_generation_fitness.copy()
             top_idx = np.argsort(fitness)[-local_search_top_k:]
-            for idx in top_idx:
-                improved, _ = two_opt_permutation(
-                    env, ga_instance.population[idx].tolist(), max_swaps=500
-                )
-                ga_instance.population[idx, :] = improved
 
-        if iteration % 100 == 0:
-            logger.info(f"Gen {iteration}: Best cost = {cost:.2f} seconds")
+            for idx in top_idx:
+                current_ind = ga_instance.population[idx].astype(int).tolist()
+                improved, new_cost = two_opt_permutation(
+                    env, current_ind, max_swaps=150
+                )
+
+                ga_instance.population[idx, :] = improved
+                ga_instance.last_generation_fitness[idx] = -float(new_cost)
+
+        if iteration % 50 == 0 or iteration == 1:
+            logger.info(
+                f"Generation {iteration}: Current Best Route Cost = {cost:.2f} seconds"
+            )
 
     initial_population = None
     if config.use_greedy_seed:
@@ -206,35 +271,32 @@ def run_ga_pygad(env: DynamicRoadTSP, config: PygadConfig) -> GAResult:
         num_genes=num_genes,
         fitness_func=fitness_func,
         on_generation=on_generation,
+        # initial_population=initial_population,
         gene_space=gene_space,
         gene_type=int,
         allow_duplicate_genes=False,
-        parent_selection_type="rank",
+        parent_selection_type="tournament",
         K_tournament=config.tournament_size,
-        crossover_type=order_crossover,
-        # if config.use_order_crossover
-        # else config.crossover_type,
+        crossover_type=edge_recombination_crossover
+        if config.use_order_crossover
+        else config.crossover_type,
         crossover_probability=config.crossover_prob,
         mutation_type=config.mutation_type,
         mutation_probability=config.mutation_prob,
         keep_elitism=config.keep_elitism,
         random_seed=config.seed,
-        # parallel_processing=["thread", 8],
     )
 
     ga.run()
 
     best_solution, _, _ = ga.best_solution()
-    best_tour = _to_int_tour(best_solution)
+    best_tour = [int(g) for g in best_solution]
     best_cost = env.route_cost(best_tour)
 
     if config.use_local_search:
-        improved_tour, improved_cost = two_opt_permutation(
+        best_tour, best_cost = two_opt_permutation(
             env, best_tour, max_swaps=config.local_search_max_swaps
         )
-        if improved_cost < best_cost:
-            best_tour = improved_tour
-            best_cost = improved_cost
 
     return GAResult(
         best_tour=best_tour,
@@ -248,28 +310,29 @@ def main() -> None:
     data, G, env = setup_experiment(config)
 
     ga_config = PygadConfig(
-        population_size=100,
-        iterations=2000,
-        num_parents_mating=60,
-        tournament_size=4,
-        crossover_prob=0.95,
-        mutation_prob=0.1,
-        keep_elitism=2,
-        use_order_crossover=True,
-        use_local_search=False,
-        local_search_max_swaps=500,
-        use_greedy_seed=True,
+        population_size=200,
+        iterations=100,
+        num_parents_mating=140,
+        tournament_size=5,
+        crossover_prob=0.90,
+        mutation_prob=0.35,
+        mutation_type="scramble",
+        keep_elitism=3,
+        use_order_crossover=False,
+        use_local_search=True,
+        local_search_max_swaps=800,
+        use_greedy_seed=False,
     )
 
     result = run_ga_pygad(env, ga_config)
-    print(f"PyGAD best cost: {result.best_cost:.2f} seconds")
+    print(f"\nFinal Optimized Cost: {result.best_cost:.2f} seconds")
 
-    plt.figure(figsize=(7, 4))
-    plt.plot(result.history, label="Best cost per iteration")
-    plt.xlabel("Iteration")
-    plt.ylabel("Cost (seconds)")
-    plt.title("GA convergence (200 iterations)")
-    plt.grid(True, alpha=0.3)
+    plt.figure(figsize=(8, 4.5))
+    plt.plot(result.history, color="royalblue", lw=2, label="Best Tour Cost")
+    plt.xlabel("Generation Index")
+    plt.ylabel("Cost Value (Seconds)")
+    plt.title("Genetic Algorithm Cost Convergence Curve Map")
+    plt.grid(True, alpha=0.4, linestyle="--")
     plt.legend()
     plt.tight_layout()
     plt.show()
