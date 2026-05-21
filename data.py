@@ -16,7 +16,7 @@ class ExperimentConfig:
     place: str = "Centro, Madrid, Spain"
     # place: str = "Madrid, Spain"
     cache_dir: Path = Path("cache")
-    node_count: int = 100
+    node_count: int = 80
     sample_seed: int = 42
     start_index: int = 0
     update_interval: int = 200
@@ -60,8 +60,8 @@ def build_drive_graph(
             G = ox.add_edge_travel_times(G)
 
         G = ox.truncate.largest_component(G, strongly=True)
-        G = ox.project_graph(G)
-        G = ox.consolidate_intersections(G, tolerance=10, rebuild_graph=True)
+        # G = ox.project_graph(G)
+        # G = ox.consolidate_intersections(G, tolerance=10, rebuild_graph=True)
         return G
 
     G = ox.graph_from_place(place, network_type="drive")
